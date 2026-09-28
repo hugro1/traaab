@@ -72,10 +72,9 @@ export async function onRequestGet(context) {
         state_hash,
         nonce,
         code_verifier,
-        expires_at,
-        created_at
+        expires_at
       )
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?)`
   )
     .bind(
       idHash,
@@ -83,8 +82,7 @@ export async function onRequestGet(context) {
       stateHash,
       nonce,
       codeVerifier,
-      expiresAt,
-      now
+      expiresAt
     )
     .run();
 
