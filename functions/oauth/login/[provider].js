@@ -72,9 +72,10 @@ export async function onRequestGet(context) {
         state_hash,
         nonce,
         code_verifier,
-        expires_at
+        expires_at,
+        created_at
       )
-     VALUES (?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       idHash,
@@ -82,7 +83,8 @@ export async function onRequestGet(context) {
       stateHash,
       nonce,
       codeVerifier,
-      expiresAt
+      expiresAt,
+      now
     )
     .run();
 
@@ -136,7 +138,6 @@ export async function onRequestGet(context) {
 
   return new Response(null, {
     status: 302,
-
     headers: {
       Location:
         authorizationUrl.toString(),
