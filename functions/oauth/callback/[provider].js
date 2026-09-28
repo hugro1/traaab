@@ -72,7 +72,10 @@ function jsonError(status = 400) {
 
 function decodeJwtPart(value) {
   const bytes = base64urlToBytes(value);
-  return JSON.parse(new TextDecoder().decode(bytes));
+
+  return JSON.parse(
+    new TextDecoder().decode(bytes)
+  );
 }
 
 async function validateGoogleIdToken(
@@ -158,7 +161,8 @@ async function validateGoogleIdToken(
     throw new Error("invalid_signature");
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  const now =
+    Math.floor(Date.now() / 1000);
 
   if (
     payload.iss !== "https://accounts.google.com" ||
@@ -270,9 +274,7 @@ async function getGithubProfile(accessToken) {
 
   const profile = await response.json();
 
-  if (
-    !Number.isInteger(profile.id)
-  ) {
+  if (!Number.isInteger(profile.id)) {
     throw new Error("github_profile");
   }
 
@@ -332,11 +334,17 @@ export async function onRequestGet(context) {
     return jsonError(404);
   }
 
-  const url = new URL(context.request.url);
+  const url =
+    new URL(context.request.url);
 
-  const error = url.searchParams.get("error");
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
+  const error =
+    url.searchParams.get("error");
+
+  const code =
+    url.searchParams.get("code");
+
+  const state =
+    url.searchParams.get("state");
 
   if (error || !code || !state) {
     return jsonError();
@@ -432,7 +440,9 @@ export async function onRequestGet(context) {
             "bearer"
         )
       ) {
-        throw new Error("invalid_github_token");
+        throw new Error(
+          "invalid_github_token"
+        );
       }
 
       const profile =
@@ -499,10 +509,21 @@ export async function onRequestGet(context) {
           context.env.PUBLIC_BASE_URL,
         "Set-Cookie":
           `__Host-session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=28800`,
-        "Cache-Control": "no-store"
+        "Cache-Control":
+          "no-store"
       }
     });
-  } catch {
-    return jsonError();
+  } catch (error) {
+    return new Response(
+      error instanceof Error
+        ? error.message
+        : "callback_error",
+      {
+        status: 400,
+        headers: {
+          "Cache-Control": "no-store"
+        }
+      }
+    );
   }
 }
