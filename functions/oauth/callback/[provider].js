@@ -104,7 +104,8 @@ async function validateGoogleIdToken(
     throw new Error("oidc_discovery");
   }
 
-  const discovery = await discoveryResponse.json();
+  const discovery =
+    await discoveryResponse.json();
 
   if (
     discovery.issuer !==
@@ -121,7 +122,8 @@ async function validateGoogleIdToken(
     throw new Error("jwks_error");
   }
 
-  const jwks = await jwksResponse.json();
+  const jwks =
+    await jwksResponse.json();
 
   const jwk = jwks.keys.find(
     (key) => key.kid === header.kid
@@ -165,7 +167,8 @@ async function validateGoogleIdToken(
     Math.floor(Date.now() / 1000);
 
   if (
-    payload.iss !== "https://accounts.google.com" ||
+    payload.iss !==
+      "https://accounts.google.com" ||
     payload.aud !== clientId ||
     typeof payload.exp !== "number" ||
     payload.exp <= now ||
@@ -192,12 +195,16 @@ async function exchangeGoogleCode(
 ) {
   const body = new URLSearchParams({
     code,
-    client_id: context.env.GOOGLE_CLIENT_ID,
-    client_secret: context.env.GOOGLE_CLIENT_SECRET,
+    client_id:
+      context.env.GOOGLE_CLIENT_ID,
+    client_secret:
+      context.env.GOOGLE_CLIENT_SECRET,
     redirect_uri:
       `${context.env.PUBLIC_BASE_URL}/oauth/callback/google`,
-    grant_type: "authorization_code",
-    code_verifier: codeVerifier
+    grant_type:
+      "authorization_code",
+    code_verifier:
+      codeVerifier
   });
 
   const response = await fetch(
@@ -226,11 +233,14 @@ async function exchangeGithubCode(
 ) {
   const body = new URLSearchParams({
     code,
-    client_id: context.env.GITHUB_CLIENT_ID,
-    client_secret: context.env.GITHUB_CLIENT_SECRET,
+    client_id:
+      context.env.GITHUB_CLIENT_ID,
+    client_secret:
+      context.env.GITHUB_CLIENT_SECRET,
     redirect_uri:
       `${context.env.PUBLIC_BASE_URL}/oauth/callback/github`,
-    code_verifier: codeVerifier
+    code_verifier:
+      codeVerifier
   });
 
   const response = await fetch(
@@ -238,7 +248,8 @@ async function exchangeGithubCode(
     {
       method: "POST",
       headers: {
-        Accept: "application/json",
+        Accept:
+          "application/json",
         "Content-Type":
           "application/x-www-form-urlencoded"
       },
@@ -253,7 +264,9 @@ async function exchangeGithubCode(
   return response.json();
 }
 
-async function getGithubProfile(accessToken) {
+async function getGithubProfile(
+  accessToken
+) {
   const response = await fetch(
     "https://api.github.com/user",
     {
@@ -263,7 +276,9 @@ async function getGithubProfile(accessToken) {
         Accept:
           "application/vnd.github+json",
         "X-GitHub-Api-Version":
-          "2026-03-10"
+          "2026-03-10",
+        "User-Agent":
+          "traaab-oauth-lab"
       }
     }
   );
@@ -272,9 +287,12 @@ async function getGithubProfile(accessToken) {
     throw new Error("github_profile");
   }
 
-  const profile = await response.json();
+  const profile =
+    await response.json();
 
-  if (!Number.isInteger(profile.id)) {
+  if (
+    !Number.isInteger(profile.id)
+  ) {
     throw new Error("github_profile");
   }
 
@@ -306,7 +324,8 @@ async function revokeGithubAuthorization(
           "2026-03-10"
       },
       body: JSON.stringify({
-        access_token: accessToken
+        access_token:
+          accessToken
       })
     }
   );
@@ -317,15 +336,19 @@ async function revokeGithubAuthorization(
 }
 
 function randomValue() {
-  const bytes = new Uint8Array(32);
+  const bytes =
+    new Uint8Array(32);
 
   crypto.getRandomValues(bytes);
 
   return base64url(bytes);
 }
 
-export async function onRequestGet(context) {
-  const { provider } = context.params;
+export async function onRequestGet(
+  context
+) {
+  const { provider } =
+    context.params;
 
   if (
     provider !== "google" &&
@@ -381,7 +404,9 @@ export async function onRequestGet(context) {
     )
       .bind(
         idHash,
-        Math.floor(Date.now() / 1000)
+        Math.floor(
+          Date.now() / 1000
+        )
       )
       .first();
 
@@ -390,8 +415,10 @@ export async function onRequestGet(context) {
   }
 
   if (
-    transaction.provider !== provider ||
-    transaction.state_hash !== stateHash
+    transaction.provider !==
+      provider ||
+    transaction.state_hash !==
+      stateHash
   ) {
     return jsonError();
   }
@@ -415,7 +442,9 @@ export async function onRequestGet(context) {
         );
 
       if (!tokens.id_token) {
-        throw new Error("missing_id_token");
+        throw new Error(
+          "missing_id_token"
+        );
       }
 
       identity =
@@ -456,9 +485,12 @@ export async function onRequestGet(context) {
       );
 
       identity = {
-        issuer: "https://github.com",
-        subject: String(profile.id),
-        email: profile.email ?? null,
+        issuer:
+          "https://github.com",
+        subject:
+          String(profile.id),
+        email:
+          profile.email ?? null,
         displayName:
           profile.name ??
           profile.login ??
@@ -473,7 +505,9 @@ export async function onRequestGet(context) {
       await hash(sessionId);
 
     const now =
-      Math.floor(Date.now() / 1000);
+      Math.floor(
+        Date.now() / 1000
+      );
 
     const expiresAt =
       now + 8 * 60 * 60;
@@ -513,17 +547,7 @@ export async function onRequestGet(context) {
           "no-store"
       }
     });
-  } catch (error) {
-    return new Response(
-      error instanceof Error
-        ? error.message
-        : "callback_error",
-      {
-        status: 400,
-        headers: {
-          "Cache-Control": "no-store"
-        }
-      }
-    );
+  } catch {
+    return jsonError();
   }
 }
