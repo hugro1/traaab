@@ -1,338 +1,116 @@
-function base64urlToBytes(value) {
-  const padded =
-    value
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(
-        Math.ceil(value.length / 4) * 4,
-        "="
-      );
+import {
+  base64UrlToBytes,
+  base64UrlToJson
+} from "./crypto.js";
 
-  const binary = atob(padded);
-
-  const bytes =
-    new Uint8Array(binary.length);
-
-  for (
-    let i = 0;
-    i < binary.length;
-    i++
-  ) {
-    bytes[i] =
-      binary.charCodeAt(i);
-  }
-
-  return bytes;
-}
-
-function decodeBase64urlJson(value) {
-  return JSON.parse(
-    new TextDecoder().decode(
-      base64urlToBytes(value)
-    )
-  );
-}
-
-async function getGoogleDiscovery() {
-  const response =
-    await fetch(
-      "https://accounts.google.com/.well-known/openid-configuration"
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      "Google OIDC discovery failed"
-    );
-  }
-
-  return response.json();
-}
-
-export async function verifyGoogleIdToken(
-  idToken,
-  expectedNonce,
-  clientId
-) {
-  const parts =
-    idToken.split(".");
+export async function validateGoogleIdToken(idToken, clientId, expectedNonce) {
+  const parts = idToken.split(".");
 
   if (parts.length !== 3) {
-    throw new Error(
-      "Invalid Google ID token"
-    );
+    throw new Error("invalid_id_token");
   }
 
-  const [
-    encodedHeader,
-    encodedPayload,
-    encodedSignature
-  ] = parts;
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
 
-  const header =
-    decodeBase64urlJson(encodedHeader);
+  const header = base64UrlToJson(encodedHeader);
+  const payload = base64UrlToJson(encodedPayload);
 
-  const payload =
-    decodeBase64urlJson(encodedPayload);
-
-  if (
-    header.alg !== "RS256" ||
-    !header.kid
-  ) {
-    throw new Error(
-      "Invalid Google ID token header"
-    );
+  if (header.alg !== "RS256" || typeof header.kid !== "string") {
+    throw new Error("invalid_id_token");
   }
 
-  const discovery =
-    await getGoogleDiscovery();
+  const discoveryResponse = await fetch(
+    "https://accounts.google.com/.well-known/openid-configuration"
+  );
 
-  if (
-    discovery.issuer !==
-    "https://accounts.google.com"
-  ) {
-    throw new Error(
-      "Invalid Google issuer"
-    );
+  if (!discoveryResponse.ok) {
+    throw new Error("oidc_discovery_failed");
   }
 
-  const jwksResponse =
-    await fetch(
-      discovery.jwks_uri
-    );
+  const discovery = await discoveryResponse.json();
+
+  const jwksResponse = await fetch(discovery.jwks_uri);
 
   if (!jwksResponse.ok) {
-    throw new Error(
-      "Google JWKS failed"
-    );
+    throw new Error("jwks_failed");
   }
 
-  const jwks =
-    await jwksResponse.json();
+  const jwks = await jwksResponse.json();
 
-  const jwk =
-    jwks.keys.find(
-      (key) =>
-        key.kid === header.kid
-    );
+  const jwk = jwks.keys.find((key) => key.kid === header.kid);
 
   if (!jwk) {
-    throw new Error(
-      "Google signing key not found"
-    );
+    throw new Error("unknown_key");
   }
 
-  const publicKey =
-    await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      {
-        name:
-          "RSASSA-PKCS1-v1_5",
-        hash:
-          "SHA-256"
-      },
-      false,
-      ["verify"]
-    );
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256"
+    },
+    false,
+    ["verify"]
+  );
 
-  const signingInput =
-    new TextEncoder().encode(
-      `${encodedHeader}.${encodedPayload}`
-    );
+  const data = new TextEncoder().encode(
+    `${encodedHeader}.${encodedPayload}`
+  );
 
-  const signature =
-    base64urlToBytes(
-      encodedSignature
-    );
+  const signature = base64UrlToBytes(encodedSignature);
 
-  const validSignature =
-    await crypto.subtle.verify(
-      {
-        name:
-          "RSASSA-PKCS1-v1_5"
-      },
-      publicKey,
-      signature,
-      signingInput
-    );
+  const validSignature = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    signature,
+    data
+  );
 
   if (!validSignature) {
-    throw new Error(
-      "Invalid Google ID token signature"
-    );
+    throw new Error("invalid_signature");
   }
 
-  const now =
-    Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1000);
 
-  if (
-    payload.iss !==
-    "https://accounts.google.com"
-  ) {
-    throw new Error(
-      "Invalid Google issuer"
-    );
+  if (payload.iss !== discovery.issuer) {
+    throw new Error("invalid_issuer");
   }
 
-  if (
-    payload.aud !== clientId
-  ) {
-    throw new Error(
-      "Invalid Google audience"
-    );
+  const audienceValid = Array.isArray(payload.aud)
+    ? payload.aud.includes(clientId)
+    : payload.aud === clientId;
+
+  if (!audienceValid) {
+    throw new Error("invalid_audience");
   }
 
   if (
-    !payload.exp ||
-    payload.exp <= now
+    typeof payload.exp !== "number" ||
+    payload.exp <= now ||
+    typeof payload.iat !== "number" ||
+    payload.iat > now + 60
   ) {
-    throw new Error(
-      "Expired Google ID token"
-    );
+    throw new Error("invalid_time");
   }
 
-  if (
-    !payload.iat ||
-    payload.iat > now + 300
-  ) {
-    throw new Error(
-      "Invalid Google issued-at time"
-    );
+  if (payload.nonce !== expectedNonce) {
+    throw new Error("invalid_nonce");
   }
 
-  if (
-    payload.nonce !==
-    expectedNonce
-  ) {
-    throw new Error(
-      "Invalid Google nonce"
-    );
-  }
-
-  if (!payload.sub) {
-    throw new Error(
-      "Missing Google subject"
-    );
+  if (typeof payload.sub !== "string" || !payload.sub) {
+    throw new Error("invalid_subject");
   }
 
   return {
-    issuer:
-      "https://accounts.google.com",
-
-    subject:
-      String(payload.sub),
-
-    email:
-      payload.email ?? null,
-
+    issuer: payload.iss,
+    subject: payload.sub,
+    email: typeof payload.email === "string" ? payload.email : null,
     displayName:
-      payload.name ?? null
-  };
-}
-
-export async function getGithubIdentity(
-  accessToken,
-  clientId,
-  clientSecret
-) {
-  if (!accessToken) {
-    throw new Error(
-      "Missing GitHub access token"
-    );
-  }
-
-  const userResponse =
-    await fetch(
-      "https://api.github.com/user",
-      {
-        headers: {
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          Accept:
-            "application/vnd.github+json",
-
-          "X-GitHub-Api-Version":
-            "2022-11-28",
-
-          "User-Agent":
-            "traaab-oauth"
-        }
-      }
-    );
-
-  if (!userResponse.ok) {
-    throw new Error(
-      "GitHub user request failed"
-    );
-  }
-
-  const user =
-    await userResponse.json();
-
-  if (
-    !Number.isInteger(user.id)
-  ) {
-    throw new Error(
-      "Invalid GitHub user"
-    );
-  }
-
-  const revokeResponse =
-    await fetch(
-      `https://api.github.com/applications/${encodeURIComponent(clientId)}/grant`,
-      {
-        method: "DELETE",
-
-        headers: {
-          Authorization:
-            "Basic " +
-            btoa(
-              `${clientId}:${clientSecret}`
-            ),
-
-          Accept:
-            "application/vnd.github+json",
-
-          "X-GitHub-Api-Version":
-            "2022-11-28",
-
-          "User-Agent":
-            "traaab-oauth",
-
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify({
-            access_token:
-              accessToken
-          })
-      }
-    );
-
-  if (
-    revokeResponse.status !== 204
-  ) {
-    throw new Error(
-      "GitHub authorization revocation failed"
-    );
-  }
-
-  return {
-    issuer:
-      "https://github.com",
-
-    subject:
-      String(user.id),
-
-    email:
-      user.email ?? null,
-
-    displayName:
-      user.name ??
-      user.login ??
-      null
+      typeof payload.name === "string"
+        ? payload.name
+        : typeof payload.email === "string"
+          ? payload.email
+          : "Google user"
   };
 }
