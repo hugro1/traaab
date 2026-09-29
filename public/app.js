@@ -1,29 +1,15 @@
-async function carregarSessao() {
-  const status = document.getElementById("status");
+fetch("/api/me", {
+  credentials: "same-origin"
+})
+  .then((response) =>
+    response.ok ? response.json() : null
+  )
+  .then((user) => {
+    const status = document.getElementById("status");
 
-  try {
-    const response = await fetch("/api/me", {
-      cache: "no-store"
-    });
+    if (!status) return;
 
-    if (response.status === 401) {
-      status.textContent = "Você não está autenticado.";
-      return;
-    }
-
-    if (!response.ok) {
-      status.textContent = "Não foi possível consultar a sessão.";
-      return;
-    }
-
-    const user = await response.json();
-
-    status.textContent =
-      `Autenticado como ${user.displayName || user.email || user.subject}.`;
-  } catch {
-    status.textContent =
-      "Não foi possível consultar a sessão.";
-  }
-}
-
-carregarSessao();
+    status.textContent = user
+      ? `Sessão de ${user.email ?? user.displayName}.`
+      : "Nenhuma sessão neste navegador.";
+  });
