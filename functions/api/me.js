@@ -1,86 +1,53 @@
-function base64url(bytes) {
-  let binary = "";
+import {
+  getCookie
+} from "../_shared/cookies.js";
 
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-async function sha256(value) {
-  const data = new TextEncoder().encode(value);
-  return crypto.subtle.digest("SHA-256", data);
-}
-
-async function hash(value) {
-  return base64url(
-    new Uint8Array(await sha256(value))
-  );
-}
-
-function getCookie(request, name) {
-  const cookieHeader = request.headers.get("Cookie");
-
-  if (!cookieHeader) {
-    return null;
-  }
-
-  for (const part of cookieHeader.split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-
-    if (key === name) {
-      return rest.join("=");
-    }
-  }
-
-  return null;
-}
+import {
+  sha256Base64Url
+} from "../_shared/crypto.js";
 
 export async function onRequestGet(context) {
-  const sessionId = getCookie(
+  const rawSession = getCookie(
     context.request,
     "__Host-session"
   );
 
-  if (!sessionId) {
-    return new Response(null, {
-      status: 401,
-      headers: {
-        "Cache-Control": "no-store"
+  if (!rawSession) {
+    return Response.json(
+      { authenticated: false },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control": "no-store"
+        }
       }
-    });
+    );
   }
 
-  const sessionHash = await hash(sessionId);
+  const sessionHash =
+    await sha256Base64Url(rawSession);
+
+  const now = Math.floor(Date.now() / 1000);
 
   const session = await context.env.DB.prepare(
-    `SELECT
-      issuer,
-      subject,
-      email,
-      display_name,
-      expires_at
+    `SELECT issuer, subject, email, display_name
      FROM sessions
      WHERE id_hash = ?
        AND expires_at > ?`
   )
-    .bind(
-      sessionHash,
-      Math.floor(Date.now() / 1000)
-    )
+    .bind(sessionHash, now)
     .first();
 
   if (!session) {
-    return new Response(null, {
-      status: 401,
-      headers: {
-        "Cache-Control": "no-store"
+    return Response.json(
+      { authenticated: false },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control": "no-store"
+        }
       }
-    });
+    );
   }
 
   return Response.json(
