@@ -1,83 +1,46 @@
 import {
-  randomValue,
-  hash
+  randomBase64Url,
+  sha256Base64Url
 } from "../../_shared/crypto.js";
 
 import {
-  getProvider
-} from "../../_shared/providers.js";
-
-import {
-  setOAuthTransactionCookie,
-  jsonError
+  oauthTransactionCookie
 } from "../../_shared/cookies.js";
 
+import {
+  getProviderConfig
+} from "../../_shared/providers.js";
+
 export async function onRequestGet(context) {
-  const { provider } = context.params;
+  const provider = context.params.provider;
 
-  if (
-    provider !== "google" &&
-    provider !== "github"
-  ) {
-    return jsonError(404);
-  }
-
-  const config = getProvider(provider);
+  const config = getProviderConfig(provider, context.env);
 
   if (!config) {
-    return jsonError(404);
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store" }
+    });
   }
 
-  const clientId =
-    context.env[config.clientIdEnv];
+  const transactionId = randomBase64Url();
+  const state = randomBase64Url();
+  const codeVerifier = randomBase64Url();
+  const nonce = provider === "google" ? randomBase64Url() : null;
 
-  if (!clientId) {
-    return jsonError();
-  }
+  const transactionHash = await sha256Base64Url(transactionId);
+  const stateHash = await sha256Base64Url(state);
+  const codeChallenge = await sha256Base64Url(codeVerifier);
 
-  const transactionId =
-    randomValue();
-
-  const state =
-    randomValue();
-
-  const codeVerifier =
-    randomValue();
-
-  const codeChallenge =
-    await hash(codeVerifier);
-
-  const nonce =
-    provider === "google"
-      ? randomValue()
-      : null;
-
-  const now =
-    Math.floor(Date.now() / 1000);
-
-  const expiresAt =
-    now + 10 * 60;
-
-  const idHash =
-    await hash(transactionId);
-
-  const stateHash =
-    await hash(state);
+  const expiresAt = Math.floor(Date.now() / 1000) + 600;
 
   await context.env.DB.prepare(
     `INSERT INTO oauth_transactions
-      (
-        id_hash,
-        provider,
-        state_hash,
-        nonce,
-        code_verifier,
-        expires_at
-      )
+     (id_hash, provider, state_hash, nonce, code_verifier, expires_at)
      VALUES (?, ?, ?, ?, ?, ?)`
   )
     .bind(
-      idHash,
+      transactionHash,
       provider,
       stateHash,
       nonce,
@@ -86,68 +49,31 @@ export async function onRequestGet(context) {
     )
     .run();
 
-  const redirectUri =
-    `${context.env.PUBLIC_BASE_URL}/oauth/callback/${provider}`;
+  const url = new URL(config.authorizationUrl);
 
-  const authorizationUrl =
-    new URL(config.authorizationEndpoint);
-
-  authorizationUrl.searchParams.set(
-    "client_id",
-    clientId
-  );
-
-  authorizationUrl.searchParams.set(
-    "redirect_uri",
-    redirectUri
-  );
-
-  authorizationUrl.searchParams.set(
-    "response_type",
-    "code"
-  );
-
-  authorizationUrl.searchParams.set(
-    "state",
-    state
-  );
-
-  authorizationUrl.searchParams.set(
-    "code_challenge",
-    codeChallenge
-  );
-
-  authorizationUrl.searchParams.set(
-    "code_challenge_method",
-    "S256"
-  );
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
 
   if (provider === "google") {
-    authorizationUrl.searchParams.set(
-      "scope",
-      "openid email profile"
-    );
-
-    authorizationUrl.searchParams.set(
-      "nonce",
-      nonce
-    );
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("nonce", nonce);
   }
+
+  const headers = new Headers();
+
+  headers.set("Location", url.toString());
+  headers.set("Cache-Control", "no-store");
+  headers.append(
+    "Set-Cookie",
+    oauthTransactionCookie(transactionId)
+  );
 
   return new Response(null, {
     status: 302,
-
-    headers: {
-      Location:
-        authorizationUrl.toString(),
-
-      "Set-Cookie":
-        setOAuthTransactionCookie(
-          transactionId
-        ),
-
-      "Cache-Control":
-        "no-store"
-    }
+    headers
   });
 }
