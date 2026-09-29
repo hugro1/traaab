@@ -18,4 +18,5 @@
 - ☑ tokens, secrets, HTML, URLs salvas, Web Storage e logs não contêm credenciais sensíveis;
 - ☑ a equipe consegue explicar por que os arquivos estáticos continuam públicos;
 - ☑ as sessões administrativas foram encerradas no computador compartilhado.
+
 Hugo Augusto Variani e João Fidalgo Marinho
