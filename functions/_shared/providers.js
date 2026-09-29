@@ -1,29 +1,25 @@
-export const PROVIDERS = {
-  google: {
-    authorizationEndpoint:
-      "https://accounts.google.com/o/oauth2/v2/auth",
-    tokenEndpoint:
-      "https://oauth2.googleapis.com/token",
-    clientIdEnv:
-      "GOOGLE_CLIENT_ID",
-    clientSecretEnv:
-      "GOOGLE_CLIENT_SECRET",
-    scope:
-      "openid email profile",
-  },
+export function getProviderConfig(provider, env) {
+  if (provider === "google") {
+    return {
+      name: "google",
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      redirectUri: `${env.PUBLIC_BASE_URL}/oauth/callback/google`
+    };
+  }
 
-  github: {
-    authorizationEndpoint:
-      "https://github.com/login/oauth/authorize",
-    tokenEndpoint:
-      "https://github.com/login/oauth/access_token",
-    clientIdEnv:
-      "GITHUB_CLIENT_ID",
-    clientSecretEnv:
-      "GITHUB_CLIENT_SECRET",
-  },
-};
+  if (provider === "github") {
+    return {
+      name: "github",
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      redirectUri: `${env.PUBLIC_BASE_URL}/oauth/callback/github`
+    };
+  }
 
-export function getProvider(name) {
-  return PROVIDERS[name] ?? null;
+  return null;
 }
