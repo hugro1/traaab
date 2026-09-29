@@ -1,12 +1,16 @@
 export function getCookie(request, name) {
-  const cookieHeader = request.headers.get("Cookie");
+  const cookieHeader =
+    request.headers.get("Cookie");
 
   if (!cookieHeader) {
     return null;
   }
 
-  for (const part of cookieHeader.split(";")) {
-    const [key, ...rest] = part.trim().split("=");
+  for (
+    const part of cookieHeader.split(";")
+  ) {
+    const [key, ...rest] =
+      part.trim().split("=");
 
     if (key === name) {
       return rest.join("=");
@@ -21,7 +25,7 @@ export function setOAuthTransactionCookie(value) {
 }
 
 export function clearOAuthTransactionCookie() {
-  return "__Host-oauth-tx=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+  return "__Host-oauth-tx=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 export function setSessionCookie(value) {
