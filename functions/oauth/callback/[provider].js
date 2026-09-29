@@ -104,10 +104,6 @@ export async function onRequestGet(context) {
     return jsonError(401);
   }
 
-  /*
-   * Consome a transação imediatamente.
-   * Assim o mesmo callback não pode ser reutilizado.
-   */
   await context.env.DB.prepare(
     `DELETE FROM oauth_transactions
      WHERE id_hash = ?`
@@ -160,6 +156,7 @@ export async function onRequestGet(context) {
         headers: {
           "Content-Type":
             "application/x-www-form-urlencoded",
+
           "Accept":
             "application/json"
         },
@@ -237,20 +234,30 @@ export async function onRequestGet(context) {
     )
     .run();
 
+  const headers = new Headers();
+
+  headers.set(
+    "Location",
+    context.env.PUBLIC_BASE_URL
+  );
+
+  headers.append(
+    "Set-Cookie",
+    setSessionCookie(sessionId)
+  );
+
+  headers.append(
+    "Set-Cookie",
+    clearOAuthTransactionCookie()
+  );
+
+  headers.set(
+    "Cache-Control",
+    "no-store"
+  );
+
   return new Response(null, {
     status: 302,
-
-    headers: {
-      Location:
-        context.env.PUBLIC_BASE_URL,
-
-      "Set-Cookie": [
-        setSessionCookie(sessionId),
-        clearOAuthTransactionCookie()
-      ],
-
-      "Cache-Control":
-        "no-store"
-    }
+    headers
   });
 }
