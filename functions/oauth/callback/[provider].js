@@ -8,9 +8,16 @@ import {
 } from "../../_shared/providers.js";
 
 import {
-  setOAuthTransactionCookie,
+  getCookie,
+  clearOAuthTransactionCookie,
+  setSessionCookie,
   jsonError
 } from "../../_shared/cookies.js";
+
+import {
+  verifyGoogleIdToken,
+  getGithubIdentity
+} from "../../_shared/oidc.js";
 
 export async function onRequestGet(context) {
   const { provider } = context.params;
@@ -31,119 +38,216 @@ export async function onRequestGet(context) {
   const clientId =
     context.env[config.clientIdEnv];
 
-  if (!clientId) {
+  const clientSecret =
+    context.env[config.clientSecretEnv];
+
+  if (!clientId || !clientSecret) {
     return jsonError();
   }
 
-  const transactionId =
-    randomValue();
+  const url =
+    new URL(context.request.url);
+
+  const code =
+    url.searchParams.get("code");
 
   const state =
-    randomValue();
+    url.searchParams.get("state");
 
-  const codeVerifier =
-    randomValue();
+  if (!code || !state) {
+    return jsonError(400);
+  }
 
-  const codeChallenge =
-    await hash(codeVerifier);
+  const transactionId =
+    getCookie(
+      context.request,
+      "__Host-oauth-tx"
+    );
 
-  const nonce =
-    provider === "google"
-      ? randomValue()
-      : null;
+  if (!transactionId) {
+    return jsonError(401);
+  }
 
-  const now =
-    Math.floor(Date.now() / 1000);
-
-  const expiresAt =
-    now + 10 * 60;
-
-  const idHash =
+  const transactionHash =
     await hash(transactionId);
 
   const stateHash =
     await hash(state);
 
-  await context.env.DB.prepare(
-    `INSERT INTO oauth_transactions
-      (
+  const now =
+    Math.floor(Date.now() / 1000);
+
+  const transaction =
+    await context.env.DB.prepare(
+      `SELECT
         id_hash,
         provider,
         state_hash,
         nonce,
         code_verifier,
         expires_at
-      )
-     VALUES (?, ?, ?, ?, ?, ?)`
-  )
-    .bind(
-      idHash,
-      provider,
-      stateHash,
-      nonce,
-      codeVerifier,
-      expiresAt
+       FROM oauth_transactions
+       WHERE id_hash = ?
+         AND provider = ?
+         AND state_hash = ?
+         AND expires_at > ?`
     )
+      .bind(
+        transactionHash,
+        provider,
+        stateHash,
+        now
+      )
+      .first();
+
+  if (!transaction) {
+    return jsonError(401);
+  }
+
+  /*
+   * Consome a transação imediatamente.
+   * Assim o mesmo callback não pode ser reutilizado.
+   */
+  await context.env.DB.prepare(
+    `DELETE FROM oauth_transactions
+     WHERE id_hash = ?`
+  )
+    .bind(transactionHash)
     .run();
 
   const redirectUri =
     `${context.env.PUBLIC_BASE_URL}/oauth/callback/${provider}`;
 
-  const authorizationUrl =
-    new URL(config.authorizationEndpoint);
+  const tokenBody =
+    new URLSearchParams();
 
-  authorizationUrl.searchParams.set(
+  tokenBody.set(
     "client_id",
     clientId
   );
 
-  authorizationUrl.searchParams.set(
+  tokenBody.set(
+    "client_secret",
+    clientSecret
+  );
+
+  tokenBody.set(
+    "code",
+    code
+  );
+
+  tokenBody.set(
     "redirect_uri",
     redirectUri
   );
 
-  authorizationUrl.searchParams.set(
-    "response_type",
-    "code"
+  tokenBody.set(
+    "grant_type",
+    "authorization_code"
   );
 
-  authorizationUrl.searchParams.set(
-    "state",
-    state
+  tokenBody.set(
+    "code_verifier",
+    transaction.code_verifier
   );
 
-  authorizationUrl.searchParams.set(
-    "code_challenge",
-    codeChallenge
-  );
+  const tokenResponse =
+    await fetch(
+      config.tokenEndpoint,
+      {
+        method: "POST",
 
-  authorizationUrl.searchParams.set(
-    "code_challenge_method",
-    "S256"
-  );
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded",
+          "Accept":
+            "application/json"
+        },
 
-  if (provider === "google") {
-    authorizationUrl.searchParams.set(
-      "scope",
-      "openid email profile"
+        body:
+          tokenBody.toString()
+      }
     );
 
-    authorizationUrl.searchParams.set(
-      "nonce",
-      nonce
-    );
+  if (!tokenResponse.ok) {
+    return jsonError(401);
   }
+
+  const tokenData =
+    await tokenResponse.json();
+
+  let identity;
+
+  try {
+    if (provider === "google") {
+      if (!tokenData.id_token) {
+        return jsonError(401);
+      }
+
+      identity =
+        await verifyGoogleIdToken(
+          tokenData.id_token,
+          transaction.nonce,
+          clientId
+        );
+    } else {
+      if (!tokenData.access_token) {
+        return jsonError(401);
+      }
+
+      identity =
+        await getGithubIdentity(
+          tokenData.access_token,
+          clientId,
+          clientSecret
+        );
+    }
+  } catch {
+    return jsonError(401);
+  }
+
+  const sessionId =
+    randomValue();
+
+  const sessionHash =
+    await hash(sessionId);
+
+  const sessionExpiresAt =
+    now + 8 * 60 * 60;
+
+  await context.env.DB.prepare(
+    `INSERT INTO sessions
+      (
+        id_hash,
+        issuer,
+        subject,
+        email,
+        display_name,
+        expires_at
+      )
+     VALUES (?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      sessionHash,
+      identity.issuer,
+      identity.subject,
+      identity.email,
+      identity.displayName,
+      sessionExpiresAt
+    )
+    .run();
 
   return new Response(null, {
     status: 302,
+
     headers: {
       Location:
-        authorizationUrl.toString(),
+        context.env.PUBLIC_BASE_URL,
 
-      "Set-Cookie":
-        setOAuthTransactionCookie(
-          transactionId
-        ),
+      "Set-Cookie": [
+        setSessionCookie(sessionId),
+        clearOAuthTransactionCookie()
+      ],
 
       "Cache-Control":
         "no-store"
