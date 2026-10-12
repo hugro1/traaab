@@ -1,0 +1,102 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f4f5f7;
+  color: #333;
+}
+
+main {
+  width: 100%;
+  max-width: 620px;
+
+  margin: 30px;
+  padding: 40px;
+
+  background: white;
+
+  border-radius: 10px;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+h1 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+#status {
+  margin-bottom: 25px;
+}
+
+.acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  margin-bottom: 20px;
+}
+
+.botao,
+button {
+  display: block;
+
+  width: 100%;
+
+  padding: 12px 16px;
+
+  border: 0;
+  border-radius: 5px;
+
+  font-size: 16px;
+  text-align: center;
+
+  cursor: pointer;
+}
+
+.botao {
+  text-decoration: none;
+
+  background: #3472f7;
+  color: white;
+}
+
+.botao:hover {
+  opacity: 0.9;
+}
+
+.dashboard {
+  background: #23ccef;
+}
+
+button {
+  background: #fb404b;
+  color: white;
+}
+
+
+/* Interface da atividade Desenho Assinado */
+.cartao {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  background: rgba(22, 27, 34, 0.72);
+}
+.cartao h2 { margin-top: 0; }
+#formulario { display: grid; gap: .75rem; max-width: 28rem; }
+#numero { width: 100%; box-sizing: border-box; padding: .7rem; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+#desenho { margin: 1.5rem auto; max-width: 800px; }
+#desenho img { display: block; width: 100%; height: auto; }
+#mensagem { color: #ff8a8a; }
